@@ -110,41 +110,40 @@ export const ChatProvider = ({ children }) => {
 
   // 🔥 SOCKET (FINAL CLEAN VERSION)
   useEffect(() => {
-    if (!socket) return;
+  if (!socket) return;
 
-    // NEW MESSAGE
-    socket.on("newMessage", (msg) => {
-      if (selectedUser && msg.senderId === selectedUser._id) {
-        setMessages(prev => [...prev, msg]);
-      } else {
-        setUnseenMessages(prev => ({
-          ...prev,
-          [msg.senderId]: (prev[msg.senderId] || 0) + 1
-        }));
-      }
-    });
+  socket.on("newMessage", (msg) => {
+    if (selectedUser && msg.senderId === selectedUser._id) {
+      setMessages((prev) => [...prev, msg]);
+    } else {
+      setUnseenMessages((prev) => ({
+        ...prev,
+        [msg.senderId]: (prev[msg.senderId] || 0) + 1,
+      }));
+    }
+  });
 
-    // TYPING
-    socket.on("typing", (userId) => {
-      setTypingUser(userId);
+  socket.on("typing", (userId) => {
+    setTypingUser(userId);
+    setTimeout(() => setTypingUser(null), 1500);
+  });
 
-      setTimeout(() => {
-        setTypingUser(null);
-      }, 1500);
-    });
+  socket.on("newRequest", () => {
+    getRequests();
+  });
 
-    // REQUEST
-    socket.on("newRequest", () => {
-      getRequests();
-    });
+  socket.on("requestUpdated", () => {
+    getRequests();
+    getUsers();
+  });
 
-    return () => {
-      socket.off("newMessage");
-      socket.off("typing");
-      socket.off("newRequest");
-    };
-
-  }, [socket, selectedUser]);
+  return () => {
+    socket.off("newMessage");
+    socket.off("typing");
+    socket.off("newRequest");
+    socket.off("requestUpdated");
+  };
+}, [socket, selectedUser]);
 
   const value = {
     messages,

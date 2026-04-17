@@ -1,6 +1,8 @@
 import express from "express";
 import { protectRoute } from "../middleware/auth.js";
 import ChatRequest from "../models/ChatRequest.js";
+import { io, userSocketMap } from "../server.js";
+
 import {
   getMessages,
   getUsersForSidebar,
@@ -10,7 +12,8 @@ import {
 
 const messageRouter = express.Router();
 
-// ✅ REQUEST ROUTES FIRST
+
+// SEND REQUEST
 messageRouter.post("/request/send", protectRoute, async (req, res) => {
   const { receiverId } = req.body;
 
@@ -20,7 +23,10 @@ messageRouter.post("/request/send", protectRoute, async (req, res) => {
   });
 
   if (existing) {
-    return res.json({ success: false, message: "Already requested" });
+    return res.json({
+      success: false,
+      message: "Already requested",
+    });
   }
 
   await ChatRequest.create({
@@ -28,10 +34,19 @@ messageRouter.post("/request/send", protectRoute, async (req, res) => {
     receiverId,
   });
 
+  const receiverSocketId = userSocketMap[receiverId];
+
+  if (receiverSocketId) {
+    io.to(receiverSocketId).emit("newRequest");
+  }
+
   res.json({ success: true });
 });
 
+
+// GET REQUESTS
 messageRouter.get("/request", protectRoute, async (req, res) => {
+
   const requests = await ChatRequest.find({
     receiverId: req.user._id,
     status: "pending",
@@ -42,22 +57,47 @@ messageRouter.get("/request", protectRoute, async (req, res) => {
     status: "pending",
   }).populate("receiverId");
 
-  res.json({ success: true, requests, sentRequests });
+  res.json({
+    success: true,
+    requests,
+    sentRequests,
+  });
 });
 
+
+// ACCEPT / REJECT
 messageRouter.put("/request/handle", protectRoute, async (req, res) => {
+
   const { requestId, action } = req.body;
 
   const request = await ChatRequest.findById(requestId);
-  if (!request) return res.json({ success: false });
+
+  if (!request) {
+    return res.json({ success: false });
+  }
 
   request.status = action;
   await request.save();
 
+  const senderSocketId =
+    userSocketMap[request.senderId.toString()];
+
+  const receiverSocketId =
+    userSocketMap[request.receiverId.toString()];
+
+  if (senderSocketId) {
+    io.to(senderSocketId).emit("requestUpdated");
+  }
+
+  if (receiverSocketId) {
+    io.to(receiverSocketId).emit("requestUpdated");
+  }
+
   res.json({ success: true });
 });
 
-// ✅ NORMAL ROUTES AFTER
+
+// NORMAL ROUTES
 messageRouter.get("/users", protectRoute, getUsersForSidebar);
 messageRouter.get("/:id", protectRoute, getMessages);
 messageRouter.put("/mark/:id", protectRoute, markMessageAsSeen);
